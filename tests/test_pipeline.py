@@ -14,7 +14,7 @@ from detector import pipeline
 from detector.config import Configuracao
 from detector.etapas import (
     descreve_imagem,
-    encontra_objeto,
+    encontra_objeto_llm,
     escolhe_imagem,
     julga_resultado,
     melhora_descricao,
@@ -29,7 +29,13 @@ from detector.modelos import (
     Veredito,
 )
 
-MODULOS_COM_CHAMAR_LLM = [melhora_descricao, descreve_imagem, escolhe_imagem, encontra_objeto, julga_resultado]
+MODULOS_COM_CHAMAR_LLM = [
+    melhora_descricao,
+    descreve_imagem,
+    escolhe_imagem,
+    encontra_objeto_llm,
+    julga_resultado,
+]
 
 
 def _indice_do_conteudo(conteudo: list[dict[str, Any]]) -> int:
@@ -80,6 +86,8 @@ def _imagem_pequena(tmp_path: Path, largura: int = 800, altura: int = 600) -> Pa
 
 
 def _config(tmp_path: Path, **overrides: Any) -> Configuracao:
+    """Configuracao padrao destes testes: motor_localizacao='llm' (fluxo v1, exercitado aqui)."""
+    overrides.setdefault("motor_localizacao", "llm")
     return Configuracao(dir_saida=tmp_path / "saida", **overrides)
 
 

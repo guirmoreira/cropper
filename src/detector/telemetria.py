@@ -1,13 +1,16 @@
-"""Acumulador thread-safe de metricas de uso da LLM."""
+"""Acumulador thread-safe de metricas de uso da LLM e de compute local."""
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from detector.modelos import Metricas, MetricasEtapa
+from detector.modelos import Metricas, MetricasCompute, MetricasEtapa
+
+logger = logging.getLogger(__name__)
 
 
 class Telemetria:
@@ -22,6 +25,11 @@ class Telemetria:
         self._tokens_cache_leitura = 0
         self._custo_usd = 0.0
         self._por_etapa: dict[str, MetricasEtapa] = {}
+
+        self._chamadas_detector_local = 0
+        self._tempo_inferencia_s = 0.0
+        self._dispositivo_usado = ""
+        self._modelo_local = ""
 
     def registra(
         self,
@@ -60,6 +68,25 @@ class Telemetria:
                 metricas_etapa = self._por_etapa.setdefault(etapa, MetricasEtapa())
                 metricas_etapa.tempo_s += duracao
 
+    def define_info_compute(self, dispositivo: str, modelo: str) -> None:
+        """Registra qual dispositivo/modelo local esta em uso nesta execucao."""
+        with self._lock:
+            self._dispositivo_usado = dispositivo
+            self._modelo_local = modelo
+
+    @contextmanager
+    def cronometra_compute(self, etapa: str) -> Iterator[None]:
+        """Cronometra uma chamada ao detector local; incrementa chamadas e tempo de inferencia."""
+        inicio = time.monotonic()
+        try:
+            yield
+        finally:
+            duracao = time.monotonic() - inicio
+            with self._lock:
+                self._chamadas_detector_local += 1
+                self._tempo_inferencia_s += duracao
+            logger.debug("compute local (%s): %.3fs", etapa, duracao)
+
     def finaliza(self) -> Metricas:
         with self._lock:
             custo_brl = (
@@ -74,4 +101,10 @@ class Telemetria:
                 custo_brl=custo_brl,
                 tempo_total_s=time.monotonic() - self._inicio,
                 por_etapa=dict(self._por_etapa),
+                compute_local=MetricasCompute(
+                    chamadas_detector_local=self._chamadas_detector_local,
+                    tempo_inferencia_s=self._tempo_inferencia_s,
+                    dispositivo_usado=self._dispositivo_usado,
+                    modelo_local=self._modelo_local,
+                ),
             )

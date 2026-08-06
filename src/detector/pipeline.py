@@ -14,8 +14,11 @@ from uuid import uuid4
 from PIL import Image
 
 from detector.config import Configuracao
+from detector.deteccao_local.base import DetectorLocal
+from detector.deteccao_local.tradutor import traduz_para_ingles
 from detector.etapas.descreve_imagem import RESUMO_FALHA, descreve_tiles
-from detector.etapas.encontra_objeto import encontra_objeto
+from detector.etapas.encontra_objeto_llm import encontra_objeto
+from detector.etapas.encontra_objeto_local import encontra_objeto_local
 from detector.etapas.escolhe_imagem import escolher_imagem
 from detector.etapas.julga_resultado import julga_resultado
 from detector.etapas.melhora_descricao import melhora_descricao
@@ -25,10 +28,12 @@ from detector.imagem import (
     carrega_imagem,
     gera_tiles,
     normalizado_para_original,
+    pixels_tile_para_original,
     recorta_e_salva,
     tamanho_da_imagem,
 )
 from detector.modelos import (
+    CandidatoLocal,
     DescricaoMelhorada,
     ItemRanking,
     Ranking,
@@ -42,6 +47,10 @@ from detector.modelos import (
 from detector.telemetria import Telemetria
 
 logger = logging.getLogger(__name__)
+
+# Cache de DetectorLocal por backend -- carregado uma unica vez por processo (ver §8.1 do
+# doc v2: carregar pesos e caro, nao deve acontecer por tile nem por execucao do laco).
+_detector_cache: dict[str, DetectorLocal] = {}
 
 
 @dataclass
@@ -87,6 +96,26 @@ def _copia_imagens_debug(
     return dir_debug, imagens
 
 
+def obter_detector_local(config: Configuracao) -> DetectorLocal:
+    """Instancia (uma vez por processo, por backend) o DetectorLocal configurado e o cacheia."""
+    detector = _detector_cache.get(config.backend_local)
+    if detector is not None:
+        return detector
+
+    if config.backend_local == "florence2":
+        from detector.deteccao_local.florence2 import Florence2Detector
+
+        detector = Florence2Detector()
+    else:
+        from detector.deteccao_local.grounding_dino import GroundingDinoDetector
+
+        detector = GroundingDinoDetector()
+
+    detector.carregar(config)
+    _detector_cache[config.backend_local] = detector
+    return detector
+
+
 def _executa_refino(
     *,
     imagem: Image.Image,
@@ -98,7 +127,7 @@ def _executa_refino(
     dir_temp: Path,
     tamanho_original: Tamanho,
 ) -> tuple[_CandidatoRefino | None, int, int]:
-    """Executa o laco de localizacao/recorte/julgamento sobre o ranking de tiles.
+    """Executa o laco de localizacao/recorte/julgamento sobre o ranking de tiles (motor LLM).
 
     Devolve (candidato final ou None, tentativas_totais, tiles_avaliados).
     """
@@ -167,6 +196,171 @@ def _executa_refino(
     return None, tentativas_totais, tiles_avaliados
 
 
+def _fluxo_llm(
+    *,
+    imagem: Image.Image,
+    tiles: list[Tile],
+    descricao_melhorada: DescricaoMelhorada,
+    config: Configuracao,
+    telemetria: Telemetria,
+    dir_temp: Path,
+    tamanho_original: Tamanho,
+) -> tuple[_CandidatoRefino | None, int, int]:
+    """Fluxo v1: ranking de tiles via LLM + laco de localizacao/julgamento via LLM."""
+    if len(tiles) == 1:
+        ranking = Ranking(
+            itens=[ItemRanking(indice_tile=0, pontuacao=1.0, justificativa="tile unico")]
+        )
+    else:
+        descricoes_tiles = descreve_tiles(tiles, config, telemetria)
+        if all(d.resumo == RESUMO_FALHA for d in descricoes_tiles):
+            raise ErroProvedor("Falha ao descrever todos os tiles gerados a partir da imagem.")
+        ranking = escolher_imagem(descricao_melhorada, descricoes_tiles, config, telemetria)
+        logger.info(
+            "Ranking: %s",
+            [(item.indice_tile, round(item.pontuacao, 2)) for item in ranking.itens],
+        )
+
+    return _executa_refino(
+        imagem=imagem,
+        tiles=tiles,
+        ranking=ranking,
+        descricao_melhorada=descricao_melhorada,
+        config=config,
+        telemetria=telemetria,
+        dir_temp=dir_temp,
+        tamanho_original=tamanho_original,
+    )
+
+
+def _fluxo_local(
+    *,
+    imagem: Image.Image,
+    tiles: list[Tile],
+    descricao_melhorada: DescricaoMelhorada,
+    detector: DetectorLocal,
+    config: Configuracao,
+    telemetria: Telemetria,
+    dir_temp: Path,
+    tamanho_original: Tamanho,
+) -> tuple[_CandidatoRefino | None, int, int]:
+    """Fluxo v2: localizacao via DetectorLocal + julgamento via LLM (etapa 8, inalterada).
+
+    Sem refino iterativo por tile: o detector local nao aceita feedback em linguagem natural
+    e e determinístico, entao um candidato reprovado simplesmente cede lugar ao proximo do
+    ranking global (que ja cobre todos os tiles). Se nenhum candidato for aprovado e
+    `fallback_para_llm=True`, aciona o fluxo v1 completo (com refino via feedback).
+    """
+    telemetria.define_info_compute(detector.dispositivo, detector.nome_modelo)
+
+    prompt_ingles = traduz_para_ingles(
+        descricao_melhorada.descricao_melhorada, config, telemetria
+    )
+
+    candidatos_por_tile: list[tuple[Tile, CandidatoLocal]] = []
+    for tile in tiles:
+        for candidato in encontra_objeto_local(tile, prompt_ingles, detector, config, telemetria):
+            candidatos_por_tile.append((tile, candidato))
+
+    # Ranking global cross-tile -- sem chamada LLM, ordenacao puramente pelo score local.
+    candidatos_por_tile.sort(key=lambda par: par[1].score, reverse=True)
+
+    tentativas_totais = 0
+    tiles_vistos: set[int] = set()
+    melhor_esforco: _CandidatoRefino | None = None
+
+    for tile, candidato in candidatos_por_tile[: config.max_candidatos_local]:
+        tiles_vistos.add(tile.indice)
+
+        ret_original = pixels_tile_para_original(candidato.caixa, tile)
+        ret_original = ret_original.expandir(config.margem_recorte, tamanho_original)
+        if not caixa_plausivel(ret_original, tile):
+            logger.info("Tile %d: caixa local implausivel, descartando", tile.indice)
+            continue
+
+        tentativas_totais += 1
+        caminho_candidato = dir_temp / f"candidato_local_{tile.indice}_{tentativas_totais}.png"
+        recorta_e_salva(imagem, ret_original, caminho_candidato)
+
+        veredito = julga_resultado(caminho_candidato, descricao_melhorada, config, telemetria)
+        candidato_refino = _CandidatoRefino(
+            caminho=caminho_candidato, retangulo=ret_original, veredito=veredito
+        )
+        if melhor_esforco is None or veredito.confianca > melhor_esforco.veredito.confianca:
+            melhor_esforco = candidato_refino
+
+        logger.info(
+            "Tile %d (motor local, score=%.2f): aprovado=%s confianca=%.2f",
+            tile.indice,
+            candidato.score,
+            veredito.aprovado,
+            veredito.confianca,
+        )
+        if veredito.aprovado:
+            return candidato_refino, tentativas_totais, len(tiles_vistos)
+
+    if config.fallback_para_llm:
+        logger.warning(
+            "Motor local nao produziu resultado aprovado; acionando fallback via LLM (fluxo v1)."
+        )
+        return _fluxo_llm(
+            imagem=imagem,
+            tiles=tiles,
+            descricao_melhorada=descricao_melhorada,
+            config=config,
+            telemetria=telemetria,
+            dir_temp=dir_temp,
+            tamanho_original=tamanho_original,
+        )
+
+    if config.devolver_melhor_esforco and melhor_esforco is not None:
+        return melhor_esforco, tentativas_totais, len(tiles_vistos)
+    return None, tentativas_totais, len(tiles_vistos)
+
+
+def _fluxo_local_ou_fallback(
+    *,
+    imagem: Image.Image,
+    tiles: list[Tile],
+    descricao_melhorada: DescricaoMelhorada,
+    config: Configuracao,
+    telemetria: Telemetria,
+    dir_temp: Path,
+    tamanho_original: Tamanho,
+) -> tuple[_CandidatoRefino | None, int, int]:
+    """Fail-open: se o motor local nao puder ser carregado, cai para o fluxo v1 se configurado.
+
+    Nunca e uma falha silenciosa -- sempre loga um warning antes de cair para o fallback.
+    """
+    try:
+        detector = obter_detector_local(config)
+    except Exception:
+        logger.warning("Falha ao carregar o motor de deteccao local.", exc_info=True)
+        if config.fallback_para_llm:
+            logger.warning("Acionando fallback via LLM (fluxo v1) apos falha de carregamento.")
+            return _fluxo_llm(
+                imagem=imagem,
+                tiles=tiles,
+                descricao_melhorada=descricao_melhorada,
+                config=config,
+                telemetria=telemetria,
+                dir_temp=dir_temp,
+                tamanho_original=tamanho_original,
+            )
+        return None, 0, 0
+
+    return _fluxo_local(
+        imagem=imagem,
+        tiles=tiles,
+        descricao_melhorada=descricao_melhorada,
+        detector=detector,
+        config=config,
+        telemetria=telemetria,
+        dir_temp=dir_temp,
+        tamanho_original=tamanho_original,
+    )
+
+
 def detecta(caminho_imagem: Path, descricao: str, config: Configuracao) -> ResultadoDeteccao:
     run_id = f"{datetime.now().astimezone():%Y%m%d-%H%M%S}-{uuid4().hex[:6]}"
     dir_temp = Path(tempfile.mkdtemp(prefix=f"detector-{run_id}-"))
@@ -193,30 +387,26 @@ def detecta(caminho_imagem: Path, descricao: str, config: Configuracao) -> Resul
         descricao_melhorada_texto = descricao_melhorada.descricao_melhorada
         logger.info("Descricao melhorada: %s", descricao_melhorada_texto)
 
-        if len(tiles) == 1:
-            ranking = Ranking(
-                itens=[ItemRanking(indice_tile=0, pontuacao=1.0, justificativa="tile unico")]
+        if config.motor_localizacao == "local":
+            candidato_final, tentativas, tiles_avaliados = _fluxo_local_ou_fallback(
+                imagem=imagem,
+                tiles=tiles,
+                descricao_melhorada=descricao_melhorada,
+                config=config,
+                telemetria=telemetria,
+                dir_temp=dir_temp,
+                tamanho_original=tamanho_original,
             )
         else:
-            descricoes_tiles = descreve_tiles(tiles, config, telemetria)
-            if all(d.resumo == RESUMO_FALHA for d in descricoes_tiles):
-                raise ErroProvedor("Falha ao descrever todos os tiles gerados a partir da imagem.")
-            ranking = escolher_imagem(descricao_melhorada, descricoes_tiles, config, telemetria)
-            logger.info(
-                "Ranking: %s",
-                [(item.indice_tile, round(item.pontuacao, 2)) for item in ranking.itens],
+            candidato_final, tentativas, tiles_avaliados = _fluxo_llm(
+                imagem=imagem,
+                tiles=tiles,
+                descricao_melhorada=descricao_melhorada,
+                config=config,
+                telemetria=telemetria,
+                dir_temp=dir_temp,
+                tamanho_original=tamanho_original,
             )
-
-        candidato_final, tentativas, tiles_avaliados = _executa_refino(
-            imagem=imagem,
-            tiles=tiles,
-            ranking=ranking,
-            descricao_melhorada=descricao_melhorada,
-            config=config,
-            telemetria=telemetria,
-            dir_temp=dir_temp,
-            tamanho_original=tamanho_original,
-        )
 
         metricas = telemetria.finaliza()
 

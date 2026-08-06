@@ -24,7 +24,7 @@ from detector.excecoes import (
     ErroParsing,
     ErroProvedor,
 )
-from detector.modelos import Metricas, ResultadoDeteccao
+from detector.modelos import Metricas, MetricasCompute, ResultadoDeteccao
 
 load_dotenv()
 
@@ -68,6 +68,8 @@ def _monta_configuracao(
     manter_temporarios: bool,
     parar_no_primeiro_candidato: bool,
     debug: bool,
+    motor: str | None,
+    backend_local: str | None,
     verbose: bool,
 ) -> Configuracao:
     overrides: dict[str, Any] = {}
@@ -89,6 +91,10 @@ def _monta_configuracao(
         overrides["parar_no_primeiro_candidato"] = True
     if debug:
         overrides["debug"] = True
+    if motor is not None:
+        overrides["motor_localizacao"] = motor
+    if backend_local is not None:
+        overrides["backend_local"] = backend_local
     if verbose:
         overrides["log_level"] = "DEBUG"
 
@@ -114,6 +120,21 @@ def _tabela_metricas(metricas: Metricas) -> Table:
         custo += f"  (R$ {_formata_decimal_br(metricas.custo_brl, 2)})"
     tabela.add_row("Custo total", custo)
     tabela.add_row("Tempo de processamento", f"{_formata_decimal_br(metricas.tempo_total_s, 1)} s")
+
+    return tabela
+
+
+def _tabela_compute(compute: MetricasCompute) -> Table:
+    tabela = Table(show_header=False, box=None, padding=(0, 2))
+    tabela.add_column(justify="left", style="bold")
+    tabela.add_column(justify="right")
+
+    tabela.add_row("Backend", compute.modelo_local)
+    tabela.add_row("Dispositivo", compute.dispositivo_usado)
+    tabela.add_row("Chamadas ao detector", _formata_inteiro_br(compute.chamadas_detector_local))
+    tabela.add_row(
+        "Tempo de inferencia", f"{_formata_decimal_br(compute.tempo_inferencia_s, 2)} s"
+    )
 
     return tabela
 
@@ -147,6 +168,14 @@ def _imprime_resultado_humano(resultado: ResultadoDeteccao, config: Configuracao
         )
     console.print()
     console.print(Panel(_tabela_metricas(resultado.metricas), title="Metricas", expand=False))
+    if resultado.metricas.compute_local.chamadas_detector_local > 0:
+        console.print(
+            Panel(
+                _tabela_compute(resultado.metricas.compute_local),
+                title="Compute local",
+                expand=False,
+            )
+        )
 
 
 def _emite_erro(erro: DetectorErro, json_saida: bool) -> None:
@@ -189,6 +218,12 @@ def detectar(
         "--debug",
         help="Salva todas as imagens intermediarias em dir-saida/debug e inclui os caminhos no resultado",
     ),
+    motor: str | None = typer.Option(
+        None, "--motor", help="Motor de localizacao: 'local' (padrao) ou 'llm'"
+    ),
+    backend_local: str | None = typer.Option(
+        None, "--backend-local", help="Backend do motor local: 'florence2' ou 'grounding_dino'"
+    ),
     json_saida: bool = typer.Option(
         False, "--json", help="Emite ResultadoDeteccao em JSON no stdout"
     ),
@@ -207,6 +242,8 @@ def detectar(
             manter_temporarios=manter_temporarios,
             parar_no_primeiro_candidato=parar_no_primeiro_candidato,
             debug=debug,
+            motor=motor,
+            backend_local=backend_local,
             verbose=verbose,
         )
         _verifica_api_key()

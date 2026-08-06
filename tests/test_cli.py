@@ -48,6 +48,14 @@ def test_sem_api_key_retorna_codigo_3(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert resultado.exit_code == 3
 
 
+def test_motor_invalido_retorna_codigo_3(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    resultado = runner.invoke(
+        cli.app,
+        ["--imagem", str(tmp_path / "x.png"), "--descricao", "algo", "--motor", "invalido"],
+    )
+    assert resultado.exit_code == 3
+
+
 def test_arquivo_inexistente_retorna_codigo_2(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -111,6 +111,18 @@ class ResultadoLocalizacao(BaseModel):
     observacao: str = ""
 
 
+class CandidatoLocal(BaseModel):
+    """Candidato devolvido por um DetectorLocal. Caixa em PIXELS ABSOLUTOS DO TILE."""
+
+    caixa: Retangulo
+    score: float = Field(ge=0.0, le=1.0)
+    rotulo: str = ""
+
+
+class Traducao(BaseModel):
+    texto_ingles: str
+
+
 class Veredito(BaseModel):
     aprovado: bool
     confianca: float = Field(ge=0.0, le=1.0)
@@ -125,6 +137,15 @@ class MetricasEtapa(BaseModel):
     tempo_s: float = 0.0
 
 
+class MetricasCompute(BaseModel):
+    """Custo de inferencia local -- nao tem preco em USD, mas tem custo de tempo/recurso."""
+
+    chamadas_detector_local: int = 0
+    tempo_inferencia_s: float = 0.0
+    dispositivo_usado: str = ""
+    modelo_local: str = ""
+
+
 class Metricas(BaseModel):
     chamadas_llm: int = 0
     tokens_entrada: int = 0
@@ -134,6 +155,7 @@ class Metricas(BaseModel):
     custo_brl: float | None = None
     tempo_total_s: float = 0.0
     por_etapa: dict[str, MetricasEtapa] = Field(default_factory=dict)
+    compute_local: MetricasCompute = Field(default_factory=MetricasCompute)
 
 
 class ResultadoDeteccao(BaseModel):

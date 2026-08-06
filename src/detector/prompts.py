@@ -80,6 +80,12 @@ direcao e quanto ajustar (ex.: "o cabecalho do card esta cortado no topo; expand
 apenas "nao corresponde".\
 """
 
+SISTEMA_TRADUCAO = """\
+Traduza o texto a seguir do portugues para o ingles. Devolva apenas a traducao, sem \
+comentarios, no campo `texto_ingles`. Preserve o sentido literal -- este texto sera usado \
+como prompt de um detector de objetos open-vocabulary, nao como texto para um leitor humano.\
+"""
+
 INSTRUCAO_JSON = """\
 Responda exclusivamente com um objeto JSON valido que satisfaca o schema abaixo. Nao \
 escreva texto antes ou depois. Nao use blocos de codigo markdown.

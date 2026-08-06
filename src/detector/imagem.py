@@ -144,6 +144,17 @@ def normalizado_para_original(caixa: RetanguloNormalizado, tile: Tile) -> Retang
     return Retangulo(x0=x0, y0=y0, x1=x1, y1=y1)
 
 
+def pixels_tile_para_original(caixa_px: Retangulo, tile: Tile) -> Retangulo:
+    """Pixels absolutos do TILE (motor de deteccao local) -> pixels absolutos do ORIGINAL.
+
+    Ao contrario da LLM (espaco normalizado 0..1000, ver `normalizado_para_original`),
+    Grounding DINO/Florence-2 ja devolvem caixas em pixels do tile recebido -- a conversao
+    e apenas um deslocamento pela origem do tile, sem divisao por 1000.
+    """
+    dx, dy = tile.origem
+    return caixa_px.deslocar(dx, dy)
+
+
 def caixa_plausivel(
     retangulo: Retangulo,
     tile: Tile,

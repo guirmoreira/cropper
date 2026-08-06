@@ -16,7 +16,15 @@ dependencies = [
     "rich>=13.9.0",
     "python-dotenv>=1.0.1",
     "tenacity>=9.0.0",
+    "transformers>=4.46.0",
+    "torch>=2.3",
+    "pillow-heif>=0.20.0",
+    "accelerate>=1.0.0",
 ]
+
+[project.optional-dependencies]
+cuda = ["torch>=2.3"]
+mps = ["torch>=2.3"]     # Apple Silicon -- usa backend padrao do torch
 
 [project.scripts]
 detector = "detector.cli:app"
@@ -49,9 +57,14 @@ target-version = "py312"
 testpaths = ["tests"]
 markers = [
     "integracao: testes de integracao que fazem chamadas reais a LLM (nao rodam por padrao)",
+    "modelo_local: testes que baixam/rodam um backend de deteccao local real (nao rodam por padrao)",
 ]
-addopts = "-m 'not integracao'"
+addopts = "-m 'not integracao and not modelo_local'"
 
 [tool.mypy]
 python_version = "3.12"
 files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["torch.*", "transformers.*"]
+ignore_missing_imports = true

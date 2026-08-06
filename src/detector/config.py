@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,6 +39,16 @@ class Configuracao(BaseSettings):
     taxa_usd_brl: float | None = None
     log_level: str = "INFO"
 
+    motor_localizacao: Literal["local", "llm"] = "local"
+    backend_local: Literal["florence2", "grounding_dino"] = "florence2"
+    dispositivo: Literal["auto", "cpu", "cuda", "mps"] = "auto"
+    limiar_score_local: float = 0.30
+    fallback_para_llm: bool = True
+    max_candidatos_local: int = 3
+    traduzir_prompt: bool = True
+    modelo_traducao: str = "anthropic/claude-haiku-4-5-20251001"
+    cache_dir_modelos: Path | None = None
+
     @model_validator(mode="after")
     def valida(self) -> Configuracao:
         if not (0.0 <= self.sobreposicao < 0.5):
@@ -59,4 +70,23 @@ class Configuracao(BaseSettings):
             )
         if self.workers < 1:
             raise ErroConfiguracao(f"workers deve ser >= 1, recebido: {self.workers}")
+        if self.max_candidatos_local < 1:
+            raise ErroConfiguracao(
+                f"max_candidatos_local deve ser >= 1, recebido: {self.max_candidatos_local}"
+            )
+        if not (0.0 <= self.limiar_score_local <= 1.0):
+            raise ErroConfiguracao(
+                f"limiar_score_local deve estar em [0.0, 1.0], recebido: {self.limiar_score_local}"
+            )
+        if self.dispositivo == "cuda":
+            try:
+                import torch
+            except ImportError as exc:
+                raise ErroConfiguracao(
+                    "dispositivo='cuda' requer o pacote torch instalado."
+                ) from exc
+            if not torch.cuda.is_available():
+                raise ErroConfiguracao(
+                    "dispositivo='cuda' foi solicitado mas CUDA nao esta disponivel neste ambiente."
+                )
         return self

@@ -1,4 +1,8 @@
-"""Etapa 6: localiza o objeto dentro de um tile, devolvendo coordenadas normalizadas."""
+"""Etapa 6 (motor LLM): localiza o objeto dentro de um tile via LLM multimodal.
+
+Com `motor_localizacao="local"` (padrao), esta etapa so e usada como fallback quando o
+detector local falha ou nao aprova nenhum candidato -- ver `pipeline._fluxo_llm`.
+"""
 
 from __future__ import annotations
 
