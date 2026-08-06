@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from detector.modelos import Metricas
+
 
 class DetectorErro(Exception):
-    """Erro base do detector de objetos."""
+    """Erro base do detector de objetos.
+
+    `metricas` e preenchido pelo pipeline antes de propagar, para que o
+    chamador (CLI) sempre tenha acesso aos custos ja acumulados ate a falha.
+    """
+
+    def __init__(self, mensagem: str) -> None:
+        super().__init__(mensagem)
+        self.metricas: "Metricas | None" = None
 
 
 class ErroEntrada(DetectorErro):
