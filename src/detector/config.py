@@ -34,6 +34,7 @@ class Configuracao(BaseSettings):
 
     dir_saida: Path = Path("./saida")
     manter_temporarios: bool = False
+    debug: bool = False
     taxa_usd_brl: float | None = None
     log_level: str = "INFO"
 

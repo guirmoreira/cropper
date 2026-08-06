@@ -148,3 +148,5 @@ class ResultadoDeteccao(BaseModel):
     mensagem: str = ""  # motivo da falha, se sucesso=False
     metricas: Metricas
     run_id: str
+    caminho_debug: Path | None = None  # diretorio com as imagens intermediarias (--debug)
+    imagens_intermediarias: list[Path] = Field(default_factory=list)

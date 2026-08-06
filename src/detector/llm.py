@@ -24,6 +24,11 @@ from detector.telemetria import Telemetria
 
 logger = logging.getLogger(__name__)
 
+# Alguns modelos (ex.: claude-sonnet-5) rejeitam sampling params como
+# temperature fora de um valor fixo. Sem isso, a chamada falha com
+# UnsupportedParamsError em vez de ignorar o parametro incompativel.
+litellm.drop_params = True
+
 ERROS_RETENTAVEIS = (
     litellm.Timeout,
     litellm.RateLimitError,
@@ -74,6 +79,29 @@ def extrair_json(texto: str) -> str:
                 return sem_cercas[inicio : i + 1]
 
     raise ErroParsing(f"JSON desbalanceado na resposta: {texto[:200]!r}")
+
+
+def _valida_resposta[T: BaseModel](texto: str, schema: type[T]) -> T:
+    """Valida o JSON da resposta contra o schema esperado.
+
+    Alguns modelos (via tool-use estruturado) embrulham os campos reais em uma
+    unica chave extra (ex.: {"parameters": {...}}) em vez de devolve-los no
+    nivel raiz. Se a validacao direta falhar e a resposta for exatamente essa
+    forma, tenta novamente com o conteudo desembrulhado antes de desistir.
+    """
+    bruto = extrair_json(texto)
+    try:
+        return schema.model_validate_json(bruto)
+    except ValidationError:
+        dados = json.loads(bruto)
+        if isinstance(dados, dict) and len(dados) == 1:
+            (unico_valor,) = dados.values()
+            if isinstance(unico_valor, dict):
+                try:
+                    return schema.model_validate(unico_valor)
+                except ValidationError:
+                    pass
+        raise
 
 
 def _extrai_texto(resp: Any) -> str:
@@ -220,7 +248,7 @@ def chamar_llm[T: BaseModel](
         texto = _chama(usar_fallback)
 
     try:
-        return schema.model_validate_json(extrair_json(texto))
+        return _valida_resposta(texto, schema)
     except (ValidationError, ErroParsing) as erro_original:
         logger.info("Resposta invalida na etapa '%s'; solicitando correcao.", etapa)
         mensagens_correcao = _monta_mensagens(usar_fallback) + [
@@ -247,7 +275,7 @@ def chamar_llm[T: BaseModel](
             telemetria=telemetria,
         )
         try:
-            return schema.model_validate_json(extrair_json(texto_corrigido))
+            return _valida_resposta(texto_corrigido, schema)
         except (ValidationError, ErroParsing) as erro_final:
             raise ErroParsing(
                 f"Resposta invalida da etapa '{etapa}' apos retry de correcao: {erro_final}"

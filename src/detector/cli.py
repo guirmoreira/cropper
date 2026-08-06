@@ -67,6 +67,7 @@ def _monta_configuracao(
     sobreposicao: float | None,
     manter_temporarios: bool,
     parar_no_primeiro_candidato: bool,
+    debug: bool,
     verbose: bool,
 ) -> Configuracao:
     overrides: dict[str, Any] = {}
@@ -86,6 +87,8 @@ def _monta_configuracao(
         overrides["manter_temporarios"] = True
     if parar_no_primeiro_candidato:
         overrides["parar_no_primeiro_candidato"] = True
+    if debug:
+        overrides["debug"] = True
     if verbose:
         overrides["log_level"] = "DEBUG"
 
@@ -137,6 +140,11 @@ def _imprime_resultado_humano(resultado: ResultadoDeteccao, config: Configuracao
         f"{config.max_candidatos * config.max_tentativas_refino}   |   "
         f"Tiles avaliados: {resultado.tiles_avaliados}"
     )
+    if resultado.caminho_debug is not None:
+        console.print(
+            f"  Debug:        {resultado.caminho_debug}   "
+            f"({len(resultado.imagens_intermediarias)} imagem(ns))"
+        )
     console.print()
     console.print(Panel(_tabela_metricas(resultado.metricas), title="Metricas", expand=False))
 
@@ -176,6 +184,11 @@ def detectar(
     parar_no_primeiro_candidato: bool = typer.Option(
         False, "--parar-no-primeiro-candidato", help="Nao tenta candidatos alem do primeiro"
     ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Salva todas as imagens intermediarias em dir-saida/debug e inclui os caminhos no resultado",
+    ),
     json_saida: bool = typer.Option(
         False, "--json", help="Emite ResultadoDeteccao em JSON no stdout"
     ),
@@ -193,6 +206,7 @@ def detectar(
             sobreposicao=sobreposicao,
             manter_temporarios=manter_temporarios,
             parar_no_primeiro_candidato=parar_no_primeiro_candidato,
+            debug=debug,
             verbose=verbose,
         )
         _verifica_api_key()

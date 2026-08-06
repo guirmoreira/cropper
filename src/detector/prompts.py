@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 SISTEMA_MELHORA_DESCRICAO = """\
-Voce e um especialista em visao computacional e design de interfaces. Sua tarefa e \
-transformar a descricao vaga de um objeto visual em uma descricao precisa e verificavel, \
-que permita a outro sistema localizar esse objeto em uma imagem.
+Voce reformula a descricao vaga de um objeto visual como faria com uma query de busca: \
+mais clara e especifica, sem adicionar informacao que o usuario nao forneceu.
 
 Regras:
-- Preserve a intencao original. Nao invente atributos que contradigam o pedido.
-- Explicite: tipo de elemento, caracteristicas visuais provaveis (formato, borda, sombra, \
-agrupamento), posicao tipica na tela e o que delimita o objeto (onde ele comeca e termina).
-- Liste criterios de exclusao: elementos parecidos que nao sao o alvo.
-- Maximo de 120 palavras na descricao.
-- Se a descricao original ja for precisa, devolva-a praticamente inalterada.\
+- Preserve a intencao original. Nao invente atributos, formato, cor, posicao ou qualquer \
+outro detalhe visual que o usuario nao tenha mencionado.
+- Nao faca suposicoes sobre a imagem: voce nao tem acesso a ela e nao deve descrever como \
+se a tivesse visto.
+- Apenas reescreva a descricao para remover ambiguidade de linguagem (sinonimos vagos, \
+referencias soltas, termos genericos), da mesma forma que se reescreve uma busca para \
+torna-la mais eficaz.
+- Liste criterios de exclusao apenas quando decorrerem explicitamente do texto do usuario \
+(ex.: "nao o botao de cancelar" quando o usuario pede "o botao de confirmar").
+- Maximo de 60 palavras na descricao.
+- Se a descricao original ja for clara, devolva-a praticamente inalterada.\
 """
 
 SISTEMA_DESCREVE_IMAGEM = """\

@@ -11,8 +11,9 @@ uso da LLM.
 
 1. A imagem e fatiada em tiles com sobreposicao se exceder `1568px` no
    maior lado (imagens menores viram um unico tile).
-2. A descricao do usuario e refinada por uma LLM em uma descricao mais
-   precisa e verificavel.
+2. A descricao do usuario e reformulada por uma LLM como uma query de
+   busca mais clara, sem olhar a imagem nem supor detalhes visuais que o
+   usuario nao mencionou.
 3. Cada tile e descrito por uma LLM (em paralelo) e depois ranqueado pela
    probabilidade de conter o objeto-alvo.
 4. Para os melhores candidatos do ranking, um laco localiza o objeto no
@@ -53,6 +54,11 @@ uv run detector \
 Codigos de saida: `0` sucesso, `1` objeto nao detectado, `2` erro de
 entrada (arquivo/formato), `3` erro de configuracao (ex.: chave de API
 ausente), `4` erro de rede/provedor apos esgotar retries.
+
+Use `--debug` para salvar todas as imagens intermediarias do processo
+(tiles, versoes reduzidas enviadas a LLM e recortes candidatos) em
+`<dir-saida>/debug/<run_id>/` -- os caminhos aparecem em
+`caminho_debug` e `imagens_intermediarias` no `ResultadoDeteccao`.
 
 Veja todas as opcoes com `uv run detector --help`.
 

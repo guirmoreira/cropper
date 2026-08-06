@@ -25,7 +25,6 @@ from detector.imagem import (
     carrega_imagem,
     gera_tiles,
     normalizado_para_original,
-    prepara_para_llm,
     recorta_e_salva,
     tamanho_da_imagem,
 )
@@ -57,16 +56,6 @@ def _slugifica(texto: str, tamanho_max: int = 40) -> str:
     return normalizado[:tamanho_max] or "objeto"
 
 
-def _prepara_imagem_reduzida(imagem: Image.Image, dir_temp: Path) -> Path | None:
-    try:
-        caminho = dir_temp / "original.png"
-        imagem.save(caminho)
-        return prepara_para_llm(caminho, limite=800)
-    except OSError:
-        logger.warning("Falha ao preparar imagem reduzida para melhora_descricao.", exc_info=True)
-        return None
-
-
 def _promove_arquivo(
     caminho_original: Path, caminho_temp: Path, descricao: str, config: Configuracao, run_id: str
 ) -> Path:
@@ -82,6 +71,20 @@ def _grava_json_resultado(resultado: ResultadoDeteccao) -> None:
         return
     caminho_json = resultado.caminho_imagem.with_suffix(".json")
     caminho_json.write_text(resultado.model_dump_json(indent=2), encoding="utf-8")
+
+
+def _copia_imagens_debug(
+    dir_temp: Path, config: Configuracao, run_id: str
+) -> tuple[Path, list[Path]]:
+    """Copia todas as imagens intermediarias do diretorio temporario para dir_saida/debug.
+
+    Inclui tiles, versoes reduzidas preparadas para a LLM e recortes candidatos.
+    """
+    dir_debug = config.dir_saida / "debug" / run_id
+    dir_debug.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(dir_temp, dir_debug, dirs_exist_ok=True)
+    imagens = sorted(dir_debug.rglob("*.png"))
+    return dir_debug, imagens
 
 
 def _executa_refino(
@@ -186,8 +189,7 @@ def detecta(caminho_imagem: Path, descricao: str, config: Configuracao) -> Resul
         tiles = gera_tiles(imagem, config, dir_temp)
         logger.info("Fatiamento gerou %d tile(s)", len(tiles))
 
-        caminho_reduzida = _prepara_imagem_reduzida(imagem, dir_temp)
-        descricao_melhorada = melhora_descricao(descricao, caminho_reduzida, config, telemetria)
+        descricao_melhorada = melhora_descricao(descricao, config, telemetria)
         descricao_melhorada_texto = descricao_melhorada.descricao_melhorada
         logger.info("Descricao melhorada: %s", descricao_melhorada_texto)
 
@@ -218,6 +220,11 @@ def detecta(caminho_imagem: Path, descricao: str, config: Configuracao) -> Resul
 
         metricas = telemetria.finaliza()
 
+        caminho_debug: Path | None = None
+        imagens_debug: list[Path] = []
+        if config.debug:
+            caminho_debug, imagens_debug = _copia_imagens_debug(dir_temp, config, run_id)
+
         if candidato_final is None:
             return ResultadoDeteccao(
                 sucesso=False,
@@ -228,6 +235,8 @@ def detecta(caminho_imagem: Path, descricao: str, config: Configuracao) -> Resul
                 mensagem="Objeto nao localizado com confianca suficiente apos as tentativas configuradas.",
                 metricas=metricas,
                 run_id=run_id,
+                caminho_debug=caminho_debug,
+                imagens_intermediarias=imagens_debug,
             )
 
         caminho_promovido = _promove_arquivo(
@@ -252,6 +261,8 @@ def detecta(caminho_imagem: Path, descricao: str, config: Configuracao) -> Resul
             mensagem=mensagem,
             metricas=metricas,
             run_id=run_id,
+            caminho_debug=caminho_debug,
+            imagens_intermediarias=imagens_debug,
         )
         _grava_json_resultado(resultado)
         return resultado

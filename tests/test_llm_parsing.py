@@ -119,6 +119,32 @@ def test_correcao_apos_json_malformado(monkeypatch: pytest.MonkeyPatch) -> None:
     assert metricas.chamadas_llm == 2
 
 
+def test_desembrulha_resposta_envolta_em_chave_unica(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Alguns modelos devolvem os campos aninhados sob uma chave extra (ex.: 'parameters')."""
+    respostas = [
+        FakeResponse.com_texto(json.dumps({"parameters": {"valor": 9, "rotulo": "aninhado"}}))
+    ]
+
+    def fake_completion(**kwargs: Any) -> FakeResponse:
+        return respostas.pop(0)
+
+    monkeypatch.setattr(litellm, "completion", fake_completion)
+    telemetria = Telemetria()
+
+    resultado = chamar_llm(
+        etapa="teste",
+        modelo="anthropic/claude-haiku-4-5-20251001",
+        sistema="sistema",
+        conteudo=[{"type": "text", "text": "ola"}],
+        schema=SchemaTeste,
+        telemetria=telemetria,
+    )
+
+    assert resultado == SchemaTeste(valor=9, rotulo="aninhado")
+    metricas = telemetria.finaliza()
+    assert metricas.chamadas_llm == 1
+
+
 def test_falha_apos_correcao_levanta_erro_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
     respostas = [
         FakeResponse.com_texto("nao e json"),
