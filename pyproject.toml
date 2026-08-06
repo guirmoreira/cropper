@@ -1,0 +1,52 @@
+[project]
+name = "detector-objetos"
+version = "0.1.0"
+description = "Detector de objetos em imagem via LLM multimodal, com pipeline de refino por feedback."
+readme = "README.md"
+authors = [
+    { name = "Guilherme Moreira", email = "guilhermeribmoreira@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "litellm>=1.55.0",
+    "pillow>=11.0.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "typer>=0.13.0",
+    "rich>=13.9.0",
+    "python-dotenv>=1.0.1",
+    "tenacity>=9.0.0",
+]
+
+[project.scripts]
+detector = "detector.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.12.2,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "detector"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integracao: testes de integracao que fazem chamadas reais a LLM (nao rodam por padrao)",
+]
+addopts = "-m 'not integracao'"
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
