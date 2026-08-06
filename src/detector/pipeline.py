@@ -33,9 +33,9 @@ from detector.modelos import (
     DescricaoMelhorada,
     ItemRanking,
     Ranking,
+    ResultadoDeteccao,
     Retangulo,
     RetanguloNormalizado,
-    ResultadoDeteccao,
     Tamanho,
     Tile,
     Veredito,
@@ -165,7 +165,7 @@ def _executa_refino(
 
 
 def detecta(caminho_imagem: Path, descricao: str, config: Configuracao) -> ResultadoDeteccao:
-    run_id = f"{datetime.now():%Y%m%d-%H%M%S}-{uuid4().hex[:6]}"
+    run_id = f"{datetime.now().astimezone():%Y%m%d-%H%M%S}-{uuid4().hex[:6]}"
     dir_temp = Path(tempfile.mkdtemp(prefix=f"detector-{run_id}-"))
     telemetria = Telemetria(taxa_usd_brl=config.taxa_usd_brl)
     descricao_melhorada_texto = ""

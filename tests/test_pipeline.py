@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import threading
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 from PIL import Image

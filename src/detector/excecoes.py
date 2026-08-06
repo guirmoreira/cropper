@@ -17,7 +17,7 @@ class DetectorErro(Exception):
 
     def __init__(self, mensagem: str) -> None:
         super().__init__(mensagem)
-        self.metricas: "Metricas | None" = None
+        self.metricas: Metricas | None = None
 
 
 class ErroEntrada(DetectorErro):

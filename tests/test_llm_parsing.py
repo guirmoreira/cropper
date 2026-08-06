@@ -60,7 +60,7 @@ class FakeResponse:
     usage: FakeUsage = field(default_factory=FakeUsage)
 
     @classmethod
-    def com_texto(cls, texto: str, usage: FakeUsage | None = None) -> "FakeResponse":
+    def com_texto(cls, texto: str, usage: FakeUsage | None = None) -> FakeResponse:
         return cls(choices=[FakeChoice(FakeMessage(content=texto))], usage=usage or FakeUsage())
 
 

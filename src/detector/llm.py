@@ -12,7 +12,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 import litellm
 from pydantic import BaseModel, ValidationError
@@ -23,8 +23,6 @@ from detector.prompts import INSTRUCAO_JSON
 from detector.telemetria import Telemetria
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T", bound=BaseModel)
 
 ERROS_RETENTAVEIS = (
     litellm.Timeout,
@@ -170,7 +168,7 @@ def _requisitar(
     return texto
 
 
-def chamar_llm(
+def chamar_llm[T: BaseModel](
     *,
     etapa: str,
     modelo: str,

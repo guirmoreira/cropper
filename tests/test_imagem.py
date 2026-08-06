@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from itertools import pairwise
 from pathlib import Path
-from typing import Callable
 
 import pytest
 from PIL import Image
@@ -76,7 +77,7 @@ def test_sobreposicao_efetiva(
     overlap_minimo_esperado = config.tamanho_tile - int(
         config.tamanho_tile * (1 - config.sobreposicao)
     )
-    for anterior, atual in zip(tiles_linha0, tiles_linha0[1:]):
+    for anterior, atual in pairwise(tiles_linha0):
         fim_anterior = anterior.origem[0] + anterior.tamanho[0]
         overlap = fim_anterior - atual.origem[0]
         assert overlap >= overlap_minimo_esperado

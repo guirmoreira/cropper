@@ -40,6 +40,11 @@ dev = [
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint.per-file-ignores]
+"src/detector/cli.py" = ["B008"]  # typer.Option(...) as a default is the documented typer pattern
+"src/detector/llm.py" = ["BLE001"]  # deliberate broad catches around optional/best-effort litellm calls
+"tests/*" = ["BLE001"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [

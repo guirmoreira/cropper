@@ -38,7 +38,7 @@ class Configuracao(BaseSettings):
     log_level: str = "INFO"
 
     @model_validator(mode="after")
-    def valida(self) -> "Configuracao":
+    def valida(self) -> Configuracao:
         if not (0.0 <= self.sobreposicao < 0.5):
             raise ErroConfiguracao(
                 f"sobreposicao deve estar em [0.0, 0.5), recebido: {self.sobreposicao}"

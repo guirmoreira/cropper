@@ -23,7 +23,7 @@ class Retangulo(BaseModel):
     y1: int
 
     @model_validator(mode="after")
-    def valida(self) -> "Retangulo":
+    def valida(self) -> Retangulo:
         if self.x1 <= self.x0:
             raise ValueError(f"x1 deve ser maior que x0: x0={self.x0}, x1={self.x1}")
         if self.y1 <= self.y0:
@@ -42,7 +42,7 @@ class Retangulo(BaseModel):
     def area(self) -> int:
         return self.largura * self.altura
 
-    def expandir(self, margem_px: int, limite: Tamanho) -> "Retangulo":
+    def expandir(self, margem_px: int, limite: Tamanho) -> Retangulo:
         """Expande em todas as direcoes, clampando aos limites da imagem."""
         return Retangulo(
             x0=max(0, self.x0 - margem_px),
@@ -51,7 +51,7 @@ class Retangulo(BaseModel):
             y1=min(limite.altura, self.y1 + margem_px),
         )
 
-    def deslocar(self, dx: int, dy: int) -> "Retangulo":
+    def deslocar(self, dx: int, dy: int) -> Retangulo:
         return Retangulo(x0=self.x0 + dx, y0=self.y0 + dy, x1=self.x1 + dx, y1=self.y1 + dy)
 
 

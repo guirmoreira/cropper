@@ -25,7 +25,7 @@ def carrega_imagem(caminho: Path) -> Image.Image:
         raise ErroEntrada(f"Arquivo nao encontrado: {caminho}")
 
     try:
-        imagem = Image.open(caminho)
+        imagem: Image.Image = Image.open(caminho)
         imagem.load()
     except (UnidentifiedImageError, OSError) as exc:
         raise ErroEntrada(f"Nao foi possivel abrir a imagem: {caminho} ({exc})") from exc
@@ -155,9 +155,7 @@ def caixa_plausivel(
     if retangulo.largura < largura_min or retangulo.altura < altura_min:
         return False
     area_tile = tile.tamanho[0] * tile.tamanho[1]
-    if retangulo.area > fracao_max_area * area_tile:
-        return False
-    return True
+    return not retangulo.area > fracao_max_area * area_tile
 
 
 def recorta_e_salva(imagem: Image.Image, retangulo: Retangulo, destino: Path) -> Path:
